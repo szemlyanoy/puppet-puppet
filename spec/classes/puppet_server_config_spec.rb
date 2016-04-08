@@ -4,6 +4,7 @@ describe 'puppet::server::config' do
   on_supported_os.each do |os, os_facts|
     next if only_test_os() and not only_test_os.include?(os)
     next if exclude_test_os() and exclude_test_os.include?(os)
+    next if os_facts[:osfamily] == 'windows'
     context "on #{os}" do
       let (:default_facts) do
         os_facts.merge({
@@ -79,7 +80,19 @@ describe 'puppet::server::config' do
             :creates => "#{ssldir}/certs/puppetmaster.example.com.pem",
             :command => "#{puppetcacmd} --generate puppetmaster.example.com",
             :require => ["Concat[#{conf_file}]", "Exec[puppet_server_config-create_ssl_dir]"],
-          }).that_notifies('Service[httpd]')
+          })
+        end
+
+        context 'with non-AIO packages', :if => (Puppet.version < '4.0') do
+          it 'CA cert generation should notify the Apache service' do
+            should contain_exec('puppet_server_config-generate_ca_cert').that_notifies('Service[httpd]')
+          end
+        end
+
+        context 'with AIO packages', :if => (Puppet.version > '4.0') do
+          it 'CA cert generation should notify the puppetserver service' do
+            should contain_exec('puppet_server_config-generate_ca_cert').that_notifies('Service[puppetserver]')
+          end
         end
 
         context 'on Puppet 3.4+', :if => (Puppet.version >= '3.4.0') do
@@ -210,6 +223,42 @@ describe 'puppet::server::config' do
             with_content(/^\s+external_nodes\s+= $/).
             with_content(/^\s+node_terminus\s+= plain$/).
             with({})
+        end
+      end
+
+
+      describe 'with server_default_manifest => true and undef content' do
+        let :pre_condition do
+          'class { "::puppet":
+              server_default_manifest => true,
+              server => true
+          }'
+        end
+
+        it 'should contain default_manifest setting in puppet.conf' do
+          should contain_concat__fragment('puppet.conf+10-main').with_content(/\s+default_manifest = \/etc\/puppet\/manifests\/default_manifest\.pp$/)
+        end
+
+        it 'should_not contain default manifest /etc/puppet/manifests/default_manifest.pp' do
+          should_not contain_file('/etc/puppet/manifests/default_manifest.pp')
+        end
+      end
+
+      describe 'with server_default_manifest => true and server_default_manifest_content => "include foo"' do
+        let :pre_condition do
+          'class { "::puppet":
+              server_default_manifest => true,
+              server_default_manifest_content => "include foo",
+              server => true
+          }'
+        end
+
+        it 'should contain default_manifest setting in puppet.conf' do
+          should contain_concat__fragment('puppet.conf+10-main').with_content(/\s+default_manifest = \/etc\/puppet\/manifests\/default_manifest\.pp$/)
+        end
+
+        it 'should contain default manifest /etc/puppet/manifests/default_manifest.pp' do
+          should contain_file('/etc/puppet/manifests/default_manifest.pp').with_content(/include foo/)
         end
       end
 
@@ -489,7 +538,6 @@ describe 'puppet::server::config' do
           end
         end
       end
-
     end
   end
 end

@@ -4,6 +4,7 @@ describe 'puppet::server' do
   on_supported_os.each do |os, os_facts|
     next if only_test_os() and not only_test_os.include?(os)
     next if exclude_test_os() and exclude_test_os.include?(os)
+    next if os_facts[:osfamily] == 'windows'
     context "on #{os}" do
       let (:default_facts) do
         os_facts.merge({
@@ -13,16 +14,10 @@ describe 'puppet::server' do
           :puppetversion          => Puppet.version,
       }) end
 
-      if Puppet.version < '4.0'
-        ssldir           = '/var/lib/puppet/ssl'
-        additional_facts = {}
-      else
-        ssldir           = '/etc/puppetlabs/puppet/ssl'
-        additional_facts = {:rubysitedir => '/opt/puppetlabs/puppet/lib/ruby/site_ruby/2.1.0'}
-      end
-
       if os_facts[:osfamily] == 'FreeBSD'
         ssldir = '/var/puppet/ssl'
+      else
+        ssldir = '/var/lib/puppet/ssl'
       end
 
       server_package = 'puppet-server'
@@ -30,7 +25,7 @@ describe 'puppet::server' do
         server_package = 'puppetmaster'
       end
 
-      let(:facts) { default_facts.merge(additional_facts) }
+      let(:facts) { default_facts }
 
       describe 'basic case' do
         let :pre_condition do
@@ -46,6 +41,7 @@ describe 'puppet::server' do
               with_puppetmaster(false).
               with_puppetserver(nil)
           end
+          it { should_not contain_notify('ip_not_supported') }
           # No server_package for FreeBSD
           if not os_facts[:osfamily] == 'FreeBSD'
             it { should contain_package(server_package) }
@@ -72,6 +68,28 @@ describe 'puppet::server' do
               with_ssl_cert_key("#{ssldir}/private_keys/puppetmaster.example.com.pem").
               with_ssl_ca_crl("#{ssldir}/ca/ca_crl.pem")
           end
+        end
+      end
+
+      describe 'with ip parameter' do
+        describe 'with default server implementation' do
+          let :pre_condition do
+            "class {'puppet': server_ip => '127.0.0.1'}"
+          end
+
+          it 'should issue a warning because server_ip is not supported by default implementation' do
+            should contain_notify('ip_not_supported').
+              with_message('Bind IP address is unsupported for the master implementation.').
+              with_loglevel('warning')
+          end
+        end
+
+        describe 'with server_implementation => "puppetserver"' do
+          let :pre_condition do
+            "class {'puppet': server_ip => '127.0.0.1', server_implementation => 'puppetserver'}"
+          end
+
+          it { should_not contain_notify('ip_not_supported') }
         end
       end
 
@@ -109,6 +127,7 @@ describe 'puppet::server' do
 
         it { should compile.with_all_deps }
         it { should_not contain_class('apache') }
+        it { should_not contain_notify('ip_not_supported') }
         it do
           should contain_class('puppet::server::service').
             with_puppetmaster(nil).

@@ -230,6 +230,10 @@
 # $remove_lock::                      Remove the agent lock when running.
 #                                     type:boolean
 #
+# $client_certname::                  The node’s certificate name, and the unique
+#                                     identifier it uses when requesting catalogs.
+#                                     type:string
+#
 # $dir_owner::                        Owner of the base puppet directory, used when
 #                                     puppet::server is false.
 #                                     type:string
@@ -250,6 +254,9 @@
 #                                     type:string
 #
 # $server_dir::                       Puppet configuration directory
+#                                     type:string
+#
+# $server_ip::                        Bind ip address of the puppetmaster
 #                                     type:string
 #
 # $server_port::                      Puppet master port
@@ -637,6 +644,7 @@ class puppet (
   $client_package                  = $puppet::params::client_package,
   $agent                           = $puppet::params::agent,
   $remove_lock                     = $puppet::params::remove_lock,
+  $client_certname                 = $puppet::params::client_certname,
   $puppetmaster                    = $puppet::params::puppetmaster,
   $systemd_unit_name               = $puppet::params::systemd_unit_name,
   $service_name                    = $puppet::params::service_name,
@@ -647,6 +655,7 @@ class puppet (
   $server_user                     = $puppet::params::user,
   $server_group                    = $puppet::params::group,
   $server_dir                      = $puppet::params::dir,
+  $server_ip                       = $puppet::params::ip,
   $server_port                     = $puppet::params::port,
   $server_ca                       = $puppet::params::server_ca,
   $server_ca_auth_required         = $puppet::params::server_ca_auth_required,
@@ -818,6 +827,14 @@ class puppet (
     validate_array($server_admin_api_whitelist)
     validate_bool($server_enable_ruby_profiler)
     validate_bool($server_ca_auth_required)
+  } else {
+    if $server_ip != $puppet::params::ip {
+      notify {
+        'ip_not_supported':
+          message  => "Bind IP address is unsupported for the ${server_implementation} implementation.",
+          loglevel => 'warning',
+      }
+    }
   }
 
   include ::puppet::config

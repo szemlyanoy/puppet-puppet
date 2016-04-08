@@ -5,6 +5,7 @@ class puppet::params {
   $version             = 'present'
   $user                = 'puppet'
   $group               = 'puppet'
+  $ip                  = '0.0.0.0'
   $port                = 8140
   $listen              = false
   $listen_to           = []
@@ -152,6 +153,7 @@ class puppet::params {
   # Will this host be a puppet agent ?
   $agent                     = true
   $remove_lock               = true
+  $client_certname           = $::clientcert
 
   # Custom puppetmaster
   if defined('$trusted') and $::trusted['authenticated'] == 'local' {
@@ -169,7 +171,6 @@ class puppet::params {
   $server                     = false
   $server_ca                  = true
   $server_reports             = 'foreman'
-  $server_implementation      = 'master'
   $server_passenger           = true
   $server_service_fallback    = true
   $server_passenger_max_pool  = 12
@@ -185,6 +186,12 @@ class puppet::params {
   $server_http                = false
   $server_http_port           = 8139
   $server_http_allow          = []
+
+  # use puppetserver (JVM) or puppet master (Ruby)?
+  $server_implementation = $aio_package ? {
+    true    => 'puppetserver',
+    default => 'master',
+  }
 
   # Need a new master template for the server?
   $server_template = 'puppet/server/puppet.conf.erb'
@@ -285,13 +292,13 @@ class puppet::params {
     'Redhat' : {
       $osreleasemajor = regsubst($::operatingsystemrelease, '^(\d+)\..*$', '\1') # workaround for the possibly missing operatingsystemmajrelease
       $agent_restart_command = $osreleasemajor ? {
-        '6'     => "/sbin/service ${service_name} reload",
-        '7'     => "/usr/bin/systemctl reload-or-restart ${service_name}",
-        default => undef,
+        /^(5|6)$/ => "/sbin/service ${service_name} reload",
+        '7'       => "/usr/bin/systemctl reload-or-restart ${service_name}",
+        default   => undef,
       }
       $unavailable_runmodes = $osreleasemajor ? {
-        '6'     => ['systemd.timer'],
-        default => [],
+        /^(5|6)$/ => ['systemd.timer'],
+        default   => [],
       }
     }
     'Windows': {

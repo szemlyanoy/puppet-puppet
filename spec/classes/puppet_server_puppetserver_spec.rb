@@ -4,6 +4,7 @@ describe 'puppet::server::puppetserver' do
   on_supported_os.each do |os, os_facts|
     next if only_test_os() and not only_test_os.include?(os)
     next if exclude_test_os() and exclude_test_os.include?(os)
+    next if os_facts[:osfamily] == 'windows'
     context "on #{os}" do
       let (:default_facts) do
         os_facts.merge({
@@ -11,6 +12,10 @@ describe 'puppet::server::puppetserver' do
           :ipaddress      => '192.0.2.10',
           :processorcount => 1,
       }) end
+
+      let :pre_condition do
+        "class {'puppet': server_implementation => 'puppetserver'}"
+      end
 
       if Puppet.version < '4.0'
         additional_facts = {}
@@ -68,7 +73,8 @@ describe 'puppet::server::puppetserver' do
         it { should contain_file('/etc/custom/puppetserver/conf.d/ca.conf') }
         it { should contain_file('/etc/custom/puppetserver/conf.d/puppetserver.conf') }
         it { should contain_file('/etc/custom/puppetserver/conf.d/web-routes.conf') }
-        it { should contain_file('/etc/custom/puppetserver/conf.d/webserver.conf') }
+        it { should contain_file('/etc/custom/puppetserver/conf.d/webserver.conf').
+                                 with_content(/ssl-host\s+=\s0\.0\.0\.0/) }
         it { should contain_file('/etc/custom/puppetserver/conf.d/auth.conf') }
       end
 
@@ -92,8 +98,7 @@ describe 'puppet::server::puppetserver' do
       end
 
       describe 'with jvm_config file parameter' do
-        let :params do
-          default_params.merge({
+        let :params do default_params.merge({
             :config => '/etc/custom/puppetserver',
           })
         end
@@ -105,6 +110,21 @@ describe 'puppet::server::puppetserver' do
         }
       end
 
+      describe 'with server_ip parameter given to the puppet class' do
+        let(:params) do
+          default_params.merge({
+            :server_puppetserver_dir => '/etc/custom/puppetserver',
+          })
+        end
+
+        let :pre_condition do
+          "class {'puppet': server_ip => '127.0.0.1', server_implementation => 'puppetserver'}"
+        end
+
+        it 'should put the correct ip address in webserver.conf' do
+          should contain_file('/etc/custom/puppetserver/conf.d/webserver.conf').with_content(/ssl-host\s+=\s127\.0\.0\.1/)
+        end
+      end
     end
   end
 end

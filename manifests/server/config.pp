@@ -6,8 +6,9 @@ class puppet::server::config inherits puppet::config {
   }
 
   if $puppet::server_implementation == 'puppetserver' {
+    include ::puppet::server::puppetserver
     anchor {'::puppet::server::puppetserver_start': } ->
-    class { '::puppet::server::puppetserver': } ~>
+    Class['::puppet::server::puppetserver'] ~>
     anchor {'::puppet::server::puppetserver_end': }
   }
 
@@ -109,6 +110,17 @@ class puppet::server::config inherits puppet::config {
 
   if $puppet::server_passenger and $::puppet::server_implementation == 'master' and $::puppet::server_ca {
     Exec['puppet_server_config-generate_ca_cert'] ~> Service[$puppet::server_httpd_service]
+  }
+
+  # only manage this file if we provide content
+  if $puppet::server_default_manifest and $puppet::server_default_manifest_content != '' {
+    file { $::puppet::server_default_manifest_path:
+      ensure  => file,
+      owner   => $puppet::user,
+      group   => $puppet::group,
+      mode    => '0644',
+      content => $puppet::server_default_manifest_content,
+    }
   }
 
   ## Environments
